@@ -8,7 +8,7 @@ Changes:
 * DMA code limited to GBA compile flag as it will not operate safely in DS mode due to arm9 cache system.
 * tonccpy used in place of dmaCopy for NDS mode.
 * Altered detection routine in startup function. Should be more reliable (for DS mode at least. Maybe it worked better for GBA homebrew but I found this to be unreliable for DS mode stuff)
-* setRomPage value for Kernel mode alrted to be 0x8002 as rerferenced in the EZFlash Kernel source code. 0x8000....not sure what the difference is with that one. Maybe 0x8000 is actually bootloader mode?
+* setRomPage value for Kernel mode changed to be 0x8002 as rerferenced in the EZFlash Kernel source code. 0x8000....not sure what the difference is with that one. Maybe 0x8000 is actually bootloader mode?
 * Disabling of SD and setting back to PSRam mode will no only occur if DLDI is compiled for GBA as the constant mode switching is not nessecery.
 
 
