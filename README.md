@@ -1,3 +1,19 @@
+# ezfo-disc_io DLDI for DS Homebrew
+
+This is a port of the EZ Flash libfat code for DLDI spec used by NDS homebrew and is meant to be used by homebrew booted from a slot1 device like an R4, etc.
+
+
+Changes:
+
+* DMA code limited to GBA compile flag as it will not operate safely in DS mode due to arm9 cache system.
+* tonccpy used in place of dmaCopy for NDS mode.
+* Altered detection routine in startup function. Should be more reliable (for DS mode at least. Maybe it worked better for GBA homebrew but I found this to be unreliable for DS mode stuff)
+* setRomPage value for Kernel mode alrted to be 0x8002 as rerferenced in the EZFlash Kernel source code. 0x8000....not sure what the difference is with that one. Maybe 0x8000 is actually bootloader mode?
+* Disabling of SD and setting back to PSRam mode will no only occur if DLDI is compiled for GBA as the constant mode switching is not nessecery.
+
+
+Original readme posted below. Issues listed originally might still apply if used for GBA homebrew but as this DLDI port of the code is meant for DS homebrew the issues mentioned aren't relevent for this version of the driver unless compiled for GBA homebrew. ;)
+
 # ezfo-disc_io
 libfat Gameboy Advance Disc Interface for EZ Flash Omega flash cartridge
 
