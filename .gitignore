@@ -53,3 +53,4 @@ dkms.conf
 
 # Compiled DLDI files
 *.dldi
+*.nds
