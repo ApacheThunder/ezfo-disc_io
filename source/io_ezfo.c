@@ -53,7 +53,11 @@
 #define OMEGA_SD_CTL_ENABLE		OMEGA_SD_BIT_ENABLE
 #define OMEGA_SD_CTL_READ_STATE (OMEGA_SD_BIT_ENABLE | OMEGA_SD_BIT_READ_STATE)
 #define OMEGA_SD_CTL_DISABLE	0x0
-#define OMEGA_SD_WAIT			0x1388
+
+static volatile u16 OMEGA_SD_WAIT = 0x1388;
+static volatile u16 OMEGA_SDWRITE_WAIT = 0x0BB8;
+static volatile u32 OMEGA_WAITRESPONSE = 0x100000;
+
 
 /**
  *
@@ -129,7 +133,7 @@ u32 Wait_SD_Response() {
 		res = SD_Response();
 		if (res != 0xEEE1)return 0;
 		count++;
-		if (count > 0x100000)return 1;
+		if (count > OMEGA_WAITRESPONSE)return 1;
 	}	
 }
 
@@ -141,27 +145,25 @@ u32 Wait_SD_Response() {
 
 bool _EZFO_startUp() {
 	_Omega_SetROMPage(OMEGA_ROM_PAGE_KERNEL);
-	// _Spin(OMEGA_SD_WAIT);
+	_Spin(OMEGA_SD_WAIT);
 	if (Read_S98NOR_ID() == 0x223D) {
+		#ifndef NDS
+			_Omega_SetROMPage(OMEGA_ROM_PAGE_PSRAM); // Return to original mode
+		#endif
+		return true;
+	}
 	#ifndef NDS
 		_Omega_SetROMPage(OMEGA_ROM_PAGE_PSRAM); // Return to original mode
 	#endif
-		return true;
-	}
-#ifndef NDS
-	_Omega_SetROMPage(OMEGA_ROM_PAGE_PSRAM); // Return to original mode
-#endif
 	return false;
 }
 
 bool _EZFO_isInserted() { return true; }
 
-bool _EZFO_readSectors(u32 address, u32 count, u8* SDbuffer) {
+bool _EZFO_readSectors(u32 address, u32 count, void* SDbuffer) {
 	
-	SD_Enable();
-#ifndef NDS
 	_Omega_SetROMPage(OMEGA_ROM_PAGE_KERNEL); // Change to OS mode
-#endif
+	SD_Enable();
 
 	u16 i;
 	u16 blocks;
@@ -191,128 +193,62 @@ bool _EZFO_readSectors(u32 address, u32 count, u8* SDbuffer) {
 		#ifndef NDS
 			dmaCopy((void*)SDBufferAddress, (SDbuffer + i * BYTES_PER_READ), (blocks * BYTES_PER_READ));
 		#else
-			tonccpy((u8*)(SDbuffer + i * BYTES_PER_READ), (u16*)SDBufferAddress, (blocks * BYTES_PER_READ));
+			tonccpy((void*)(SDbuffer + i * BYTES_PER_READ), (void*)SDBufferAddress, (blocks * BYTES_PER_READ));
 		#endif
 	}
 	SD_Disable();
-
-	/*u32 readsRemain = 2;
-	for (u16 ii = 0; ii < _count; ii += 4) {
-		// const u16 blocks = (_count - ii > 4) ? 4 : (_count - ii);
-		u16 blocks = (_count - ii > 4) ? 4 : (_count - ii);
-
-		while (readsRemain) {
-			*(vu16*)0x9fe0000 = 0xd200;
-			*(vu16*)0x8000000 = 0x1500;
-			*(vu16*)0x8020000 = 0xd200;
-			*(vu16*)0x8040000 = 0x1500;
-			*(vu16*)0x9600000 = ((_address + ii) & 0x0000FFFF);
-			*(vu16*)0x9620000 = (((_address + ii) & 0xFFFF0000) >> 16);
-			*(vu16*)0x9640000 = blocks;
-			*(vu16*)0x9fc0000 = 0x1500;
-			
-			_Omega_SetSDControl(OMEGA_SD_CTL_READ_STATE);
-			// const u32 response = _Omega_WaitSDResponse();
-			u32 response = _Omega_WaitSDResponse();
-			_Omega_SetSDControl(OMEGA_SD_CTL_ENABLE);
-			if (response && --readsRemain) {
-				_Spin(OMEGA_SD_WAIT);
-			} else {
-			#ifdef NDS
-				tonccpy((u32*)(_buffer + ii * 512), (u16*)0x9E00000, (blocks * BYTES_PER_READ));
-			#else
-				dmaCopy((void*)0x9E00000, (void*)(_buffer + ii * 512), (blocks * BYTES_PER_READ));
-			#endif
-				break;
-			}
-		}
-	}*/
-	SD_Disable();
-#ifndef NDS
-	_Omega_SetROMPage(OMEGA_ROM_PAGE_PSRAM); // Return to original mode
-#endif
+	#ifndef NDS
+		_Omega_SetROMPage(OMEGA_ROM_PAGE_PSRAM); // Return to original mode
+	#endif
 	return true;
 }
 
 
-bool _EZFO_writeSectors(u32 address, u16 count, const u8* SDbuffer) {
-
-#ifndef NDS
+bool _EZFO_writeSectors(u32 address, u32 count, const void* SDbuffer) {
 	_Omega_SetROMPage(OMEGA_ROM_PAGE_KERNEL); // Change to OS mode
-#endif
-
-	SD_Enable();
-	SD_Read_state();
-	u16 i;
-	u16 blocks;
-	u32 res;
-	for(i = 0; i < count; i += 4) {
-		blocks = (count - i > 4) ? 4 : (count - i);
-	#ifdef NDS
-		tonccpy((u16*)SDBufferAddress, (u8*)(SDbuffer + i * BYTES_PER_READ), (blocks * BYTES_PER_READ));
-	#else
-		dmaCopy((SDbuffer + i * BYTES_PER_READ), (void*)SDBufferAddress, (blocks * BYTES_PER_READ));
-	#endif
-		*(vu16*)0x9fe0000 = OMEGA_MAGIC1;
-		*(vu16*)FlashBase_S71 = OMEGA_MAGIC2;
-		*(vu16*)0x8020000 = OMEGA_MAGIC1;
-		*(vu16*)0x8040000 = OMEGA_MAGIC2;
-		*(vu16*)0x9600000 = ((address + i) & 0x0000FFFF);
-		*(vu16*)0x9620000 = (((address + i) & 0xFFFF0000) >> 16);
-		*(vu16*)0x9640000 = (0x8000 + blocks);
-		*(vu16*)0x9fc0000 = OMEGA_MAGIC2;
-		res = Wait_SD_Response();
-		if(res == 1)return false;
-	}
-	_Spin(0x0BB8);
 	
-	SD_Disable();
-#ifndef NDS
-	_Omega_SetROMPage(OMEGA_ROM_PAGE_PSRAM); // Return to original mode
-#endif
-	
-/*#ifndef NDS
-	_Omega_SetROMPage(OMEGA_ROM_PAGE_KERNEL); // Change to OS mode
-	_Omega_SetSDControl(OMEGA_SD_CTL_READ_STATE);
-#endif
-	
-	for (u16 ii = 0; ii < _count; ii++) {
-		// const u16 blocks = (_count - ii > 4) ? 4 : (_count - ii);
-		u16 blocks = (_count - ii > 4) ? 4 : (_count - ii);
-	#ifdef NDS
-		tonccpy((u16*)0x9E00000, (u32*)(_buffer + ii * 512), (blocks * BYTES_PER_READ));
-	#else
-		dmaCopy((void*)(_buffer + ii * 512), (void*)0x9E00000, (blocks * BYTES_PER_READ));
-	#endif
-		*(vu16*)0x9fe0000 = 0xd200;
-		*(vu16*)0x8000000 = 0x1500;
-		*(vu16*)0x8020000 = 0xd200;
-		*(vu16*)0x8040000 = 0x1500;
-		*(vu16*)0x9600000 = ((_address + ii) & 0x0000FFFF);
-		*(vu16*)0x9620000 = (((_address + ii) & 0xFFFF0000) >> 16);
-		*(vu16*)0x9640000 = (0x8000 + blocks);
-		*(vu16*)0x9fc0000 = 0x1500;
+	for(int I = 0; I < count; ++I, SDbuffer += 512, ++address) {
+		SD_Enable();
+		SD_Read_state();
+		u16 blocks;
+		u32 res;
+		if(true) {
+			blocks = 1;;
+		#ifdef NDS
+			tonccpy((u16*)SDBufferAddress, (void*)(SDbuffer), (BYTES_PER_READ));
+		#else
+			dmaCopy((SDbuffer + I * BYTES_PER_READ), (void*)SDBufferAddress, (blocks * BYTES_PER_READ));
+		#endif
+			*(vu16*)0x9fe0000 = OMEGA_MAGIC1;
+			*(vu16*)FlashBase_S71 = OMEGA_MAGIC2;
+			*(vu16*)0x8020000 = OMEGA_MAGIC1;
+			*(vu16*)0x8040000 = OMEGA_MAGIC2;
+			*(vu16*)0x9600000 = ((address) & 0x0000FFFF);
+			*(vu16*)0x9620000 = (((address) & 0xFFFF0000) >> 16);
+			*(vu16*)0x9640000 = (0x8000 + blocks);
+			*(vu16*)0x9fc0000 = OMEGA_MAGIC2;
+			res = Wait_SD_Response();
+			if(res == 1)return false;
+		}
+		_Spin(0x0BB8);
 		
-		_Omega_WaitSDResponse();
-		if(res==1)
-			return 1;
+		SD_Disable();
 	}
-	// _Spin(3000);
-	_Spin(OMEGA_SD_WAIT);
-#ifndef NDS
-	_Omega_SetSDControl(OMEGA_SD_CTL_DISABLE);
-	_Omega_SetROMPage(OMEGA_ROM_PAGE_PSRAM); // Return to original mode
-#endif*/
+	
+	#ifndef NDS
+		_Omega_SetROMPage(OMEGA_ROM_PAGE_PSRAM); // Return to original mode
+	#endif
 	return true;
 }
 
 bool _EZFO_clearStatus() { return true; }
+
 bool _EZFO_shutdown() {
 	SD_Disable();
-#ifndef NDS
-	// _Omega_SetSDControl(OMEGA_SD_CTL_DISABLE);
-	_Omega_SetROMPage(OMEGA_ROM_PAGE_PSRAM); // Return to original mode
-#endif
+	#ifndef NDS
+		// _Omega_SetSDControl(OMEGA_SD_CTL_DISABLE);
+		_Omega_SetROMPage(OMEGA_ROM_PAGE_PSRAM); // Return to original mode
+	#endif
 	return true;
 }
 
